@@ -34,7 +34,7 @@ defmodule DemoGen.Parser do
         Combinators.many(parse_id_char())
       ],
       ast: fn [first_char, rest_chars] ->
-        [first_char | rest_chars] |> List.to_string()
+        [first_char | rest_chars] |> List.to_string() |> String.to_atom()
       end
     )
   end

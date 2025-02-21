@@ -4,7 +4,7 @@ defmodule DemoGen do
       @behaviour DemoGen.Command
 
       # Get command name from options
-      @demogen_command_name Keyword.fetch!(unquote(opts), :command_name)
+      @demogen_command_name Keyword.fetch!(unquote(opts), :command_name) |> String.to_atom()
 
       def demogen_command_name, do: @demogen_command_name
     end
