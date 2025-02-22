@@ -4,10 +4,11 @@ defmodule DemoGen.Runner do
 
   def run_demo(demo_file, opts \\ []) do
     repo = Keyword.fetch!(opts, :repo)
-    mod_prefix = Keyword.fetch!(opts, :prefix)
     validate_repo!(repo)
 
-    with command_map <- build_command_map([DemoGen.Commands, mod_prefix]),
+    mod_prefixes = Keyword.fetch!(opts, :prefix) |> get_mod_prefixes()
+
+    with command_map <- build_command_map(mod_prefixes),
          {:ok, commands} <- Parser.parse_file(demo_file) do
       repo.transaction(fn ->
         Enum.reduce(
@@ -18,6 +19,9 @@ defmodule DemoGen.Runner do
       end)
     end
   end
+
+  defp get_mod_prefixes(prefixes) when is_list(prefixes), do: [DemoGen.Commands | prefixes]
+  defp get_mod_prefixes(prefix) when is_atom(prefix), do: get_mod_prefixes([prefix])
 
   def execute_command(
         {:command, command, args},
