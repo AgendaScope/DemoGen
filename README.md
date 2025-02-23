@@ -1,6 +1,8 @@
 # DemoGen
 
-DemoGen is an [Elixir](https://elixir-lang.org) library that acts as a _director_ for creating demo scenarios for Elixir/Phoenix/Ecto application. Just as a movie director works from a script to coordinate actors as they play out scenes, DemoGen uses a script to direct your application through a sequence of state changes that create a compelling demo scenerio for your prospects.
+DemoGen is an [Elixir](https://elixir-lang.org) library that acts as a _director_ for creating demo scenarios, primarily aimed at Elixir/Phoenix/Ecto SaaS applications.
+
+Just as a movie director works from a script to coordinate actors as they play out scenes, DemoGen uses a script to direct your application through a sequence of state changes that create a compelling demo scenerio, ideal for showing prospects.
 
 Think of it this way:
 - Your DemoGen script is like a movie script
@@ -39,21 +41,19 @@ Your job is to write the script and implement an Elixir module for each command.
 
 ## The Script Language
 
-### Stage Directions
+### Directing the Actors (Commands)
 
-Your script consists of stage directions that create and coordinate your actors:
+Your script consists of a series of commands that create and coordinate your application objects:
 
 ```
-command_name {arg1: value1, arg2: value2, ...}  # A stage direction
+command_name {arg1: value1, arg2: value2, ...}
 
 # Examples:
-add_user {as: alice name: "Alice"}              # Creating a new actor
-join_org {user: alice org: company}             # Directing an actor to act
+add_user {as: alice name: "Alice"}              # Creating a new user
+join_org {user: alice org: company}             # Adding the new user to an existing organisation
 ```
 
-In our examples we implement an `as:` parameter to the `add_user` command that specifies a symbol that DemoGen will bind the new object to. These symbols are held in a context that is passed from command to command meaning that later commands can refer to previously created objects by symbol.
-
-This avoids the need to manually consider ID's or looking objects up.
+DemoGen passes a context map from command-to-command. Commands can register objects in the map under a symbolic name allowing them to be referred to later using that name (and avoiding having to query for objects later on). In our example `add_user` command we have implemented an `as:` parameter that specifies the symbol `alice` to bind the new user object to. The `join_org` command looks the object up using that symbol via the `user:` parameter.
 
 ### Setting the Scene (Time Control)
 
@@ -167,7 +167,7 @@ To run a script:
 DemoGen.Runner.run_demo("path/to/script.dgen", prefix: Radar.Demo.Commands, repo: Radar.Repo)
 ```
 
-The `prefix` option specifies the namespace that your command implementing modules are under. At the moment only one such namespace prefix is supported.
+The `prefix` option either specifies the single namespace, or a list of such namespaces, that your command implementing modules are under.
 
 DemoGen runs all commands within the context of an Ecto transaction and the `repo` option should specify your application repo instance.
 
@@ -201,31 +201,13 @@ macro next_day = alter_clock {D: +1}
         join_org {user: bob org: org admin: false}
 ```
 
-## Best Practices
-
-1. **Scene Management**
-   - Start with a clear temporal anchor (e.g., `@last_month`)
-   - Use consistent scene transitions (`@next_day`)
-   - Mark moments where things happen `[HH:MM]`
-
-2. **Script Organization**
-   - Group related stage directions into scenes
-   - Use consistent indentation for related actions
-   - Comment scene changes and major plot points
-
-3. **Cast and Props Management**
-   - Give your actors (symbols) meaningful names
-   - Track which actors are in each scene
-   - Use props to maintain consistency across scenes
-   - Document when new actors join the production
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-[Your contribution guidelines]
+PR's welcome.
 
 ## Credits
 

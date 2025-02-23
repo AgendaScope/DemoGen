@@ -6,10 +6,17 @@ defmodule DemoGen.Runner do
     repo = Keyword.fetch!(opts, :repo)
     validate_repo!(repo)
 
-    mod_prefixes = Keyword.fetch!(opts, :prefix) |> get_mod_prefixes()
+    command_map =
+      opts
+      |> Keyword.fetch!(:prefix)
+      |> get_mod_prefixes()
+      |> build_command_map()
 
-    with command_map <- build_command_map(mod_prefixes),
-         {:ok, commands} <- Parser.parse_file(demo_file) do
+    run_demo(demo_file, repo, command_map)
+  end
+
+  def run_demo(demo_file, repo, command_map) do
+    with {:ok, commands} <- Parser.parse_file(demo_file) do
       repo.transaction(fn ->
         Enum.reduce(
           commands,
@@ -70,7 +77,6 @@ defmodule DemoGen.Runner do
   defp validate_repo!(nil), do: :ok
 
   defp validate_repo!(repo) when is_atom(repo) do
-    IO.inspect(repo)
     Code.ensure_loaded!(repo)
 
     unless Ecto.Repo in (repo.__info__(:attributes)[:behaviour] || []) do
