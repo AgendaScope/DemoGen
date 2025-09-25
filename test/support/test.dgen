@@ -1,3 +1,13 @@
+$const = 42
 alter_clock {D: -1}
 alpha {}
 beta {}
+delta {
+  future: 🕒+1d
+}
+gamma {
+  bool: true
+  number: 42
+  string: "What is six times seven?"
+  fourty_two: $const
+}

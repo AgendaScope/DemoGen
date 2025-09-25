@@ -2,7 +2,50 @@
 
 DemoGen is an [Elixir](https://elixir-lang.org) library that acts as a _director_ for creating demo scenarios, primarily aimed at Elixir/Phoenix/Ecto SaaS applications.
 
-Just as a movie director works from a script to coordinate actors as they play out scenes, DemoGen uses a script to direct your application through a sequence of state changes that create a compelling demo scenerio, ideal for showing prospects.
+## Getting Started
+
+1. **Add DemoGen to your dependencies** in `mix.exs`:
+   ```elixir
+   def deps do
+     [
+       {:demo_gen, "~> 0.1"}
+     ]
+   end
+   ```
+
+2. **Create your first command module**:
+   ```elixir
+   defmodule MyApp.Demo.Commands.AddUser do
+     @use DemoGen, command_name: "add_user"
+
+     @impl DemoGen.Command
+     def run(args, %{time: t, symbols: symbols} = context) do
+       {:string, name} = Map.get(args, :name)
+       {:symbol, as} = Map.get(args, :as)
+
+       # Your app logic here
+       {:ok, user} = MyApp.create_user(%{name: name, inserted_at: t})
+
+       {:ok, %{context | symbols: Map.put(symbols, as, user)}}
+     end
+   end
+   ```
+
+3. **Write a simple script** (`demo.dgen`):
+   ```
+   add_user {as: alice name: "Alice Smith"}
+   ```
+
+4. **Run your demo**:
+   ```elixir
+   DemoGen.Runner.run_demo("demo.dgen",
+     prefix: MyApp.Demo.Commands,
+     repo: MyApp.Repo)
+   ```
+
+## Demo Scripts Are Screenplays
+
+Just as a movie director works from a script to coordinate actors as they play out scenes, DemoGen uses a script to direct your application through a sequence of state changes that create a compelling demo scenario.
 
 Think of it this way:
 - Your DemoGen script is like a movie script
@@ -13,21 +56,25 @@ Think of it this way:
 
 For example, when your script includes:
 ```
-delete_org {org: "TechCorp"}
-[09:00] add_org {as: company name: "TechCorp"}      # Direction to create a new actor
+        alter_clock {D: -7}
+[09:00] delete_org {org: "TechCorp"}
+        add_org {as: company name: "TechCorp"}      # Direction to create a new actor
 [09:15] add_user {as: alice name: "Alice"}          # Direction to create another actor
         join_org {user: alice org: company}         # Direction for Alice to join TechCorp
 ```
 
 DemoGen directs this scene by:
-1. Deleting the existing demo org
-2. Setting the scene time to 9:00
-3. Creating the TechCorp organization (a new actor) and giving it the symbol `company`
-4. Advacing the time to 9:15
-5. Creating a user "Alice" (a second actor) and giving it the symbol `alice`
-6. Also at 9:15, have Alice join TechCorp
+1. Setting the clock back to last week
+2. Setting the clock time to 9:00am
+3. Deleting the existing demo org
+4. Creating the TechCorp organization (a new actor) and giving it the symbol `company` (so the creation time will be 09:00 on the date 1 week ago)
+5. Advancing the time to 9:15am
+6. Creating a user "Alice" (a second actor) and giving it the symbol `alice`
+7. Also at 9:15, have Alice join TechCorp
 
 You can see how different application specific commands coordinate your products features to create a realistic demonstration scenario that can be reset & played out the same each time.
+
+Because DemoGen manages the current time under the hood and supplies it to each command it's easy to manage the flow of time across the demo.
 
 Your job is to write the script and implement an Elixir module for each command.
 
@@ -98,6 +145,21 @@ join_org {user: alice org: company}     # Alice and TechCorp perform together
 
 Each symbol (company, alice) represents an actual actor that can be directed to perform actions throughout your script.
 
+### Values
+
+Values represent attributes that your schema objects can take. DemoGen supports
+
+bool: false|true
+symbol: [a-zA-Z][a-zA-Z0-9_]* e.g. Leadership
+numeric: -?dd(.dd)? e.g. 42, -2.5
+string: "chars" e.g. "What is six times seven?"
+const: $const_name
+rel_time: 🕒[+-]n[wdhms] e.g. 🕒+1d-2h (uses the clock face unicode symbol, U+1F552)
+
+rel_time values are used to specify datetimes relative to `t` the current time in the demo. For example if `t` is 11:00 then 🕒-2h specifies 09:00.
+
+See the BNF for the parser for accurate specification of value types.
+
 ## How DemoGen Directs Your Application
 
 DemoGen is like a director interpreting a script and giving life to a performance. Here's how a scene plays out:
@@ -112,39 +174,38 @@ DemoGen is like a director interpreting a script and giving life to a performanc
 5. DemoGen records this new actor as 'company' in its cast (symbols)
 6. This actor can now be directed to perform other actions throughout your script
 
-## Implementing Stage Directions (Integration)
+## Integrating With Your Project
 
-Add :demogen to the list of dependencies in `mix.exs`:
+Add :demo_gen to the list of dependencies in `mix.exs` as per the Getting Started section above.
 
-```elixir
-def deps do
-  [
-    {:demogen, "~> 0.1"}
-  ]
-end
-```
-
-Then create command modules for each command you want to use within your demo generator script. Here's an example:
+Then create command modules for each command you want to use within your demo generator script. Here's an example of a command that adds an `%Org{}` schema object.:
 
 ```elixir
 defmodule Radar.Demo.Commands.AddOrg do
   @use DemoGen, command_name: "add_org"
 
   @impl DemoGen.Command
-  def run(args, %{time: t, symbols: symbols}) when is_map(args) do
+  def run(args, %{time: t, symbols: symbols} = context) when is_map(args) do
     {:string, name} = Map.get(args, :name)
     {:string, subdomain} = Map.get(args, :subdomain)
     {:symbol, as} = Map.get(args, :as)
 
     with {:ok, %Org{} = org} <- Radar.Accounts.create_org(t, name, subdomain) do
       {:ok, %{context | symbols: Map.put(symbols, as, org)}}
+    end
   end
 end
 ```
 
-Note that we get a symbol pass in the `as` argument that we use to bind the return value from our context function `create_org` into our global `symbols:` map. This allows later commands to refer, by name, to objects created by earlier commands.
+It is important to `@use DemoGen` and set the `command_name` attribute to the match the command syntax to appear in the `.dgen` script file for invoking that command. In this case `add_org`.
 
-The `DemoGen.Ecto` module implements `set_timestamps(t)` which ensures that any Ecto records created by a command uses the right `inserted_at` and `updated_at` values. For example:
+Note that we get a symbol passed in the `as` argument that we use to bind the return value from our context function `create_org` into the global `symbols:` map. This map is shared with all subsequent commands. This allows later commands to refer, by symbol name, to objects created by earlier commands.
+
+A command should either return the tuple `{:ok, context}` where `context` is a possibly modified version of the data structure passed to the `run` function. Or `{:error, reason}` if command processing fails.
+
+### Managing Time
+
+By default Ecto will use the current datetime for insert or update operations which is not what we want. The `DemoGen.Ecto` module implements `set_timestamps(t)` which ensures that any Ecto records created by a command uses the right `inserted_at` and `updated_at` values. For example:
 
 ```elixir
 defp create_org(t, name, subdomain) do
@@ -160,6 +221,10 @@ defp create_org(t, name, subdomain) do
   |> Repo.insert()
 end
 ```
+
+DemoGen provides the built in commands `set_clock` and `alter_clock` to manage the wall-clock time with the `[hh:mm]` syntax being a shortcut for setting the clock.
+
+## Running Demo Scripts
 
 To run a script:
 
@@ -201,6 +266,62 @@ macro next_day = alter_clock {D: +1}
         join_org {user: bob org: org admin: false}
 ```
 
+## BNF
+
+Here is the DemoGen parser in BNF form (omitting whitespace parsing for overall clarity):
+
+  program ::= statement*
+
+  statement ::= clock_expr
+              | macro_define
+              | const_define
+              | command
+              | macro_expansion
+
+  ; Identifiers
+  identifier ::= id_initial_char id_char*
+  id_initial_char ::= [a-zA-Z]
+  id_char ::= [a-zA-Z0-9_]
+
+  ; Values
+  value ::= bool_value
+          | symbol_value
+          | numeric_value
+          | string_value
+          | reltime_value
+          | const_ref
+
+  bool_value ::= "true" | "false"
+  symbol_value ::= identifier
+  numeric_value ::= number
+  string_value ::= '"' non_dquote* '"'
+  non_dquote ::= [^"]
+
+  ; Constants
+  const_ref ::= "$" identifier
+  const_define ::= "$" identifier "=" value
+
+  ; Relative time
+  reltime_value ::= "🕒" time_modifier+
+  time_modifier ::= ("+" | "-") number ("w" | "d" | "h" | "m" | "s")
+
+  ; Attributes
+  attribute ::= identifier ":" value
+  attributes ::= "{" attribute* "}"
+
+  ; Commands
+  command ::= identifier attributes
+
+  ; Clock expressions
+  clock_expr ::= "[" numeric_value ":" numeric_value (":" numeric_value)? "]"
+
+  ; Macros
+  macro_define ::= "macro" identifier "=" identifier attributes
+  macro_expansion ::= "@" identifier
+
+  ; Terminal symbols
+  number ::= [0-9]+ ("." [0-9]+)?
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -212,4 +333,4 @@ PR's welcome.
 ## Credits
 
 Matt Mower <matt@agendascope.com>
-CEO AgendaScope
+CEO, AgendaScope

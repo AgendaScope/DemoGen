@@ -16,6 +16,7 @@ defmodule DemoGen.Parser do
   def parse_dollar(), do: Terminals.char(?$)
   def parse_equals(), do: Terminals.char(?=)
   def parse_at(), do: Terminals.char(?@)
+  def parse_clock(), do: Terminals.char(?🕒)
   def parse_open_bracket(), do: Terminals.char(?[)
   def parse_close_bracket(), do: Terminals.char(?])
 
@@ -89,12 +90,69 @@ defmodule DemoGen.Parser do
     )
   end
 
+  def parse_time_modifier() do
+    Combinators.sequence([
+      parse_ows(),
+      Combinators.choice([parse_plus(), parse_minus()]),
+      Numeric.number(),
+      Combinators.choice([
+        Terminals.char(?w),
+        Terminals.char(?d),
+        Terminals.char(?h),
+        Terminals.char(?m),
+        Terminals.char(?s)
+      ])
+    ])
+  end
+
+  def parse_reltime_value() do
+    Combinators.sequence(
+      [
+        Combinators.ignore(parse_clock()),
+        Combinators.many(parse_time_modifier(), min: 1)
+      ],
+      ast: fn [time_modifiers] ->
+        {:rel_time, get_rel_time_fn(time_modifiers)}
+      end
+    )
+  end
+
+  @sec_in_min 60
+  @sec_in_hr 60 * @sec_in_min
+  @sec_in_day 24 * @sec_in_hr
+  @sec_in_week 7 * @sec_in_day
+
+  def calc_secs(count, ?w), do: @sec_in_week * count
+  def calc_secs(count, ?d), do: @sec_in_day * count
+  def calc_secs(count, ?h), do: @sec_in_hr * count
+  def calc_secs(count, ?m), do: @sec_in_min * count
+  def calc_secs(count, ?s), do: count
+
+  def seconds_from_rel_time_spec([op, number, mod]) do
+    case {op, calc_secs(number, mod)} do
+      {?+, secs} -> secs
+      {?-, secs} -> -secs
+    end
+  end
+
+  def get_rel_time_fn(modifiers) do
+    modifiers
+    |> Enum.map(&seconds_from_rel_time_spec/1)
+    |> Enum.sum()
+    |> then(fn rel_secs ->
+      fn t ->
+        DateTime.add(t, rel_secs)
+      end
+    end)
+  end
+
   def parse_value() do
     Combinators.choice([
       parse_bool_value(),
       parse_symbol_value(),
       parse_numeric_value(),
       parse_string_value(),
+      parse_reltime_value(),
       parse_const_ref()
     ])
   end
