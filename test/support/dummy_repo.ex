@@ -39,4 +39,15 @@ defmodule DemoGen.Test.DummyRepo do
   def aggregate(_, _, _, _), do: 0
   def stream(_), do: Stream.map([], & &1)
   def exists?(_), do: false
+
+  # Additional required Ecto.Repo callbacks - implemented as no-ops for testing
+  def __adapter__, do: Ecto.Adapters.SQL
+  def checked_out?, do: false
+  def config, do: [otp_app: :demo_gen]
+  def default_options(_operation), do: []
+  def get_dynamic_repo, do: __MODULE__
+  def load(_schema_or_types, data), do: data
+  def put_dynamic_repo(_repo), do: :ok
+  def start_link(_opts), do: {:ok, self()}
+  def stop(_pid), do: :ok
 end

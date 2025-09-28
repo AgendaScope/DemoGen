@@ -6,7 +6,7 @@ defmodule DemoGen.MixProject do
       app: :demo_gen,
       name: "DemoGen",
       description: description(),
-      version: "0.1.8",
+      version: "0.1.9",
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
