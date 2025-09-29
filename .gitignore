@@ -25,3 +25,4 @@ dgen-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 .serena
+.claude

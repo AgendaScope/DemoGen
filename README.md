@@ -8,7 +8,7 @@ DemoGen is an [Elixir](https://elixir-lang.org) library that acts as a _director
    ```elixir
    def deps do
      [
-       {:demo_gen, "~> 0.1"}
+       {:demo_gen, "~> 0.2"}
      ]
    end
    ```
@@ -18,13 +18,20 @@ DemoGen is an [Elixir](https://elixir-lang.org) library that acts as a _director
    defmodule MyApp.Demo.Commands.AddUser do
      @use DemoGen, command_name: "add_user"
 
+     import DemoGen.TimeStampHelpers
+
      @impl DemoGen.Command
      def run(args, %{time: t, symbols: symbols} = context) do
        {:string, name} = Map.get(args, :name)
        {:symbol, as} = Map.get(args, :as)
 
        # Your app logic here
-       {:ok, user} = MyApp.create_user(%{name: name, inserted_at: t})
+       {:ok, user} = create_with_timestamps(
+        fn ->
+          MyApp.create_user(%{name: name})
+        end,
+        t,
+        MyApp.Repo)
 
        {:ok, %{context | symbols: Map.put(symbols, as, user)}}
      end
@@ -178,11 +185,12 @@ DemoGen is like a director interpreting a script and giving life to a performanc
 
 Add :demo_gen to the list of dependencies in `mix.exs` as per the Getting Started section above.
 
-Then create command modules for each command you want to use within your demo generator script. Here's an example of a command that adds an `%Org{}` schema object.:
+Then create command modules for each command you want to use within your demo generator script. Here's an example of a command that adds an `%Org{}` schema object using your existing context functions:
 
 ```elixir
 defmodule Radar.Demo.Commands.AddOrg do
-  @use DemoGen, command_name: "add_org"
+  use DemoGen, command_name: "add_org"
+  alias DemoGen.TimestampHelpers
 
   @impl DemoGen.Command
   def run(args, %{time: t, symbols: symbols} = context) when is_map(args) do
@@ -190,8 +198,14 @@ defmodule Radar.Demo.Commands.AddOrg do
     {:string, subdomain} = Map.get(args, :subdomain)
     {:symbol, as} = Map.get(args, :as)
 
-    with {:ok, %Org{} = org} <- Radar.Accounts.create_org(t, name, subdomain) do
-      {:ok, %{context | symbols: Map.put(symbols, as, org)}}
+    # Build attrs for your existing context function
+    attrs = %{"name" => name, "subdomain" => subdomain}
+
+    # Call existing context function normally, then set demo timestamps
+    with {:ok, %Org{} = org} <- Radar.Accounts.create_org(attrs) do
+      # Set demo timestamps via simple SQL update
+      updated_org = TimestampHelpers.set_timestamps(org, t, Radar.Repo)
+      {:ok, %{context | symbols: Map.put(symbols, as, updated_org)}}
     end
   end
 end
@@ -205,24 +219,33 @@ A command should either return the tuple `{:ok, context}` where `context` is a p
 
 ### Managing Time
 
-By default Ecto will use the current datetime for insert or update operations which is not what we want. The `DemoGen.Ecto` module implements `set_timestamps(t)` which ensures that any Ecto records created by a command uses the right `inserted_at` and `updated_at` values. For example:
+DemoGen provides the built in commands `set_clock` and `alter_clock` to manage the wall-clock time with the `[hh:mm]` syntax being a shortcut for setting the clock.
+
+However many Ecto operations automatically use the current datetime for insert or update operations, which is not what we want for demo scenarios where the "flow of time" is being simualated.
+
+This can make it difficult to re-use existing context functions leading to a need to re-implement some context logic in the demo context.
+
+Sometimes this is inevital because the demo side-steps activity that would happen in the real application. For example: when adding users the demo is likely to assume that they have been confirmed, a process that in the real-world involves sending emails and waiting for a response.
+
+To allow potential re-using of existing context module functions DemoGen provides `DemoGen.TimestampHelpers` which uses a simple approach: call your existing context functions normally, then retroactively fix the timestamps via SQL update.
 
 ```elixir
-defp create_org(t, name, subdomain) do
-  %Org{}
-  |> Org.create_changeset(%{
-    "name" => name,
-    "subdomain" => subdomain
-  })
-  |> demo_changeset(%{
-    "demo" => true
-  })
-  |> Command.set_timestamps(t)
-  |> Repo.insert()
+# Call your existing context function normally
+with {:ok, org} <- MyApp.Accounts.create_org(attrs) do
+  # Change the timestamps
+  updated_org = TimestampHelpers.with_timestamps(org, demo_time, MyApp.Repo)
+  {:ok, updated_org}
+end
+
+# Or use the convenience wrapper:
+with {:ok, org} <- TimestampHelpers.create_with_timestamps(
+  fn -> MyApp.Accounts.create_org(attrs) end,
+  demo_time,
+  MyApp.Repo
+) do
+  {:ok, org}
 end
 ```
-
-DemoGen provides the built in commands `set_clock` and `alter_clock` to manage the wall-clock time with the `[hh:mm]` syntax being a shortcut for setting the clock.
 
 ## Running Demo Scripts
 
